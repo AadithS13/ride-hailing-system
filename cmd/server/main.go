@@ -15,6 +15,7 @@ func main() {
 	}
 	config.ConnectDB()
 	config.ConnectRedis()
+	config.InitNewRelic()
 
 	r := router.SetupRouter()
 	r.Run(":8080")

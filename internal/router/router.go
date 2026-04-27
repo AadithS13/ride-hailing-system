@@ -4,6 +4,7 @@ import (
 	"ride-hailing/internal/handler"
 
 	"github.com/gin-gonic/gin"
+	"ride-hailing/internal/config"
 
 	 "github.com/gin-contrib/cors"
 )
@@ -11,6 +12,25 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 	r.Use(cors.Default())
+
+	r.Use(func(c *gin.Context) {
+		if config.NRApp == nil {
+			c.Next()
+			return
+		}
+
+		txn := config.NRApp.StartTransaction(c.Request.Method + " " + c.Request.URL.Path)
+		defer txn.End()
+
+		txn.SetWebRequestHTTP(c.Request)
+
+		c.Set("txn", txn)
+
+		c.Next()
+
+		txn.SetWebResponse(nil)
+	})
+
 
 
 	// health check
