@@ -25,13 +25,21 @@
       padding: 20px;
       border-radius: 10px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      width: 300px;
+      width: 320px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
     }
 
     button {
       display: block;
       width: 100%;
-      margin: 10px 0;
+      margin: 8px 0;
       padding: 10px;
       border: none;
       border-radius: 6px;
@@ -42,12 +50,6 @@
     .primary { background: #4CAF50; color: white; }
     .secondary { background: #2196F3; color: white; }
     .danger { background: #f44336; color: white; }
-    .neutral { background: #555; color: white; }
-
-    .status {
-      font-size: 16px;
-      margin: 10px 0;
-    }
 
     .output {
       background: #111;
@@ -70,26 +72,43 @@
   <!-- DRIVER -->
   <div class="card">
     <h3>Driver</h3>
+
+    <input id="driverLat" value="12.97" />
+    <input id="driverLng" value="77.59" />
+
     <button class="secondary" onclick="addDriver()">Add Driver</button>
+
+    <select id="driverSelect"></select>
+
+    <button class="secondary" onclick="updateDriver()">Update Driver Location</button>
     <button class="primary" onclick="setAvailability(true)">Set Available</button>
     <button class="danger" onclick="setAvailability(false)">Set Unavailable</button>
+    <button class="danger" onclick="clearDrivers()">Clear All Drivers</button>
   </div>
 
   <!-- RIDE -->
   <div class="card">
     <h3>Ride</h3>
+
+    <input id="riderLat" value="12.97" />
+    <input id="riderLng" value="77.59" />
+
     <button class="secondary" onclick="createRide()">Request Ride</button>
     <button class="primary" onclick="acceptRide()">Accept Ride</button>
-    <button class="danger" onclick="endRide()">End Ride</button>
-    <button class="neutral" onclick="fullFlow()">Auto Flow</button>
+    <button class="danger" onclick="endRide()">End Ride (by Driver)</button>
   </div>
 
   <!-- STATUS -->
   <div class="card">
     <h3>Status</h3>
-    <div class="status" id="status">Status: -</div>
-    <div class="status" id="drivers">Drivers: -</div>
-    <div class="status" id="price">Price: -</div>
+
+    <div id="rideStatus">Ride: -</div>
+    <div id="price">Price: -</div>
+
+    <hr/>
+
+    <h4>Drivers</h4>
+    <div id="driverList"></div>
   </div>
 
 </div>
@@ -98,62 +117,130 @@
 <div class="output" id="output"></div>
 
 <script>
+
 let rideId = null;
 let driverCounter = 1;
+let assignedDriverId = null;
 
-// POLLING
+// polling
 setInterval(async () => {
-  if (!rideId) return;
+  if (rideId) {
+    const res = await fetch(`http://localhost:8080/v1/rides/${rideId}`);
+    const data = await res.json();
+    show(data);
+  }
 
-  const res = await fetch(`http://localhost:8080/v1/rides/${rideId}`);
-  const data = await res.json();
-  show(data);
-
-  getDriverStats();
+  getDrivers();
 }, 2000);
 
-// DRIVER
+// ADD DRIVER (always new)
 async function addDriver() {
   const driverID = driverCounter++;
+
+  const lat = parseFloat(document.getElementById("driverLat").value);
+  const lng = parseFloat(document.getElementById("driverLng").value);
 
   const res = await fetch(`http://localhost:8080/v1/drivers/${driverID}/location`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({lat: 12.97, lng: 77.59})
+    body: JSON.stringify({lat, lng})
+  });
+
+  const data = await res.json();
+
+  document.getElementById("driverSelect").value = driverID;
+
+  show(data);
+}
+
+// UPDATE DRIVER
+async function updateDriver() {
+  const driverID = document.getElementById("driverSelect").value;
+
+  if (!driverID) {
+    alert("Select a driver");
+    return;
+  }
+
+  const lat = parseFloat(document.getElementById("driverLat").value);
+  const lng = parseFloat(document.getElementById("driverLng").value);
+
+  const res = await fetch(`http://localhost:8080/v1/drivers/${driverID}/location`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({lat, lng})
   });
 
   show(await res.json());
 }
 
+// SET AVAILABILITY
 async function setAvailability(flag) {
-  await fetch('http://localhost:8080/v1/drivers/1/availability', {
+  const driverID = document.getElementById("driverSelect").value;
+
+  if (!driverID) return alert("Select a driver");
+
+  const res = await fetch(`http://localhost:8080/v1/drivers/${driverID}/availability`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({available: flag})
   });
+
+  show(await res.json());
 }
 
-// RIDE
+// CLEAR DRIVERS
+async function clearDrivers() {
+  const res = await fetch("http://localhost:8080/v1/drivers", { method: "DELETE" });
+
+  rideId = null;
+  assignedDriverId = null;
+  driverCounter = 1;
+
+  document.getElementById("driverList").innerHTML = "";
+  document.getElementById("driverSelect").innerHTML = "";
+  document.getElementById("rideStatus").innerText = "Ride: -";
+  document.getElementById("price").innerText = "Price: -";
+}
+
+// CREATE RIDE
 async function createRide() {
+  const lat = parseFloat(document.getElementById("riderLat").value);
+  const lng = parseFloat(document.getElementById("riderLng").value);
+
   const res = await fetch('http://localhost:8080/v1/rides', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
-      rider_id: "r1",
-      pickup_lat: 12.97,
-      pickup_lng: 77.59
+      rider_id: "r" + Date.now(),
+      pickup_lat: lat,
+      pickup_lng: lng
     })
   });
 
   const data = await res.json();
+
   rideId = data.ID;
+  assignedDriverId = data.DriverID;
+
+  document.getElementById("driverSelect").value = assignedDriverId;
+
   show(data);
 }
 
+// ACCEPT RIDE
 async function acceptRide() {
   if (!rideId) return alert("Create ride first");
 
-  const res = await fetch('http://localhost:8080/v1/drivers/1/accept', {
+  const driverID = document.getElementById("driverSelect").value;
+
+  if (!driverID) return alert("Select a driver");
+
+  if (driverID !== assignedDriverId) {
+    return alert("Select assigned driver");
+  }
+
+  const res = await fetch(`http://localhost:8080/v1/drivers/${driverID}/accept`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ride_id: rideId})
@@ -162,56 +249,74 @@ async function acceptRide() {
   show(await res.json());
 }
 
+// END RIDE BY DRIVER
 async function endRide() {
-  if (!rideId) return alert("Create ride first");
+  const driverID = document.getElementById("driverSelect").value;
 
-  const res = await fetch(`http://localhost:8080/v1/trips/${rideId}/end`, {
+  if (!driverID) {
+    alert("Select a driver");
+    return;
+  }
+
+  const res = await fetch(`http://localhost:8080/v1/drivers/${driverID}/end`, {
     method: 'POST'
   });
 
-  show(await res.json());
-}
-
-// DRIVER COUNT
-async function getDriverCount() {
-  const res = await fetch("http://localhost:8080/v1/drivers/count");
-  const data = await res.json();
-  document.getElementById("drivers").innerText = "Drivers: " + data.count;
-}
-
-async function getDriverStats() {
-  const res = await fetch("http://localhost:8080/v1/drivers/stats");
   const data = await res.json();
 
-  document.getElementById("drivers").innerText =
-    `Total: ${data.total} | Available: ${data.available} | Ongoing: ${data.ongoing}`;
+  if (data.ID) {
+    rideId = data.ID;
+  }
+
+  show(data);
 }
 
-// AUTO FLOW
-async function fullFlow() {
-  await addDriver();
-  await setAvailability(true);
-  await createRide();
+// GET DRIVERS
+async function getDrivers() {
+  const res = await fetch("http://localhost:8080/v1/drivers");
+  const data = await res.json();
 
-  setTimeout(acceptRide, 2000);
-  setTimeout(endRide, 4000);
+  let html = "";
+  let options = "";
+
+  data.drivers.forEach(d => {
+    let color = "black";
+    if (d.status === "AVAILABLE") color = "green";
+    if (d.status === "ONGOING") color = "orange";
+    if (d.status === "UNAVAILABLE") color = "red";
+
+    html += `<div style="color:${color}">
+      Driver ${d.driver_id} → ${d.status}
+      <br/>(${d.lat.toFixed(4)}, ${d.lng.toFixed(4)})
+    </div>`;
+
+    options += `<option value="${d.driver_id}">Driver ${d.driver_id}</option>`;
+  });
+
+  document.getElementById("driverList").innerHTML = html;
+
+  const select = document.getElementById("driverSelect");
+  const prev = select.value;
+
+  select.innerHTML = options;
+
+  if (prev) select.value = prev;
 }
 
 // UI UPDATE
 function show(data) {
-  document.getElementById("output").innerText =
-    JSON.stringify(data, null, 2);
+  document.getElementById("output").innerText = JSON.stringify(data, null, 2);
 
-  if (data.Status) {
-    document.getElementById("status").innerText =
-      "Status: " + data.Status;
+  if (data.Status && data.DriverStatus) {
+    document.getElementById("rideStatus").innerText =
+      `Ride: ${data.Status} | Driver: ${data.DriverStatus}`;
   }
 
   if (data.Fare) {
-    document.getElementById("price").innerText =
-      "Price: ₹" + data.Fare;
+    document.getElementById("price").innerText = "Price: ₹" + data.Fare;
   }
 }
+
 </script>
 
 </body>

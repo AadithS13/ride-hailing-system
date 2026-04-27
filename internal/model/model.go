@@ -15,4 +15,5 @@ type Ride struct {
 	DriverID  *string
 	CreatedAt time.Time
 	Fare float64
+	DriverStatus string `gorm:"-"`
 }

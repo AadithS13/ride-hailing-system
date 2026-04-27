@@ -56,7 +56,35 @@ func GetRide(c *gin.Context) {
 		return
 	}
 
+	// Attach driver status from Redis
+	if ride.DriverID != nil && config.RedisClient != nil {
+		status, err := config.RedisClient.Get(config.Ctx, "driver_status:"+*ride.DriverID).Result()
+		if err == nil {
+			ride.DriverStatus = status
+		}
+	}
+
 	c.JSON(200, ride)
+}
+
+func GetAllRides(c *gin.Context) {
+	repo := repository.NewRideRepository(config.DB)
+
+	rides, err := repo.GetAll()
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to fetch rides"})
+		return
+	}
+
+	// attach driver status
+	for _, ride := range rides {
+		if ride.DriverID != nil {
+			status, _ := config.RedisClient.Get(config.Ctx, "driver_status:"+*ride.DriverID).Result()
+			ride.DriverStatus = status
+		}
+	}
+
+	c.JSON(200, gin.H{"rides": rides})
 }
 
 func AcceptRideHandler(c *gin.Context) {
@@ -80,5 +108,44 @@ func AcceptRideHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{"message": "ride started"})
+	// Fetch updated ride
+	ride, err := repo.GetByID(input.RideID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to fetch ride"})
+		return
+	}
+
+	// Attach driver status
+	if ride.DriverID != nil {
+		status, _ := config.RedisClient.Get(config.Ctx, "driver_status:"+*ride.DriverID).Result()
+		ride.DriverStatus = status
+	}
+
+	c.JSON(200, ride)
+}
+
+func EndRideByDriver(c *gin.Context) {
+	driverID := c.Param("id")
+
+	// get active ride
+	rideID, err := config.RedisClient.Get(
+		config.Ctx,
+		"driver_active_ride:"+driverID,
+	).Result()
+
+	if err != nil {
+		c.JSON(400, gin.H{"error": "no active ride for driver"})
+		return
+	}
+
+	repo := repository.NewRideRepository(config.DB)
+	svc := service.NewRideService(repo)
+
+	ride, err := svc.EndRide(rideID)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, ride)
 }

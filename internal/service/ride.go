@@ -2,32 +2,26 @@ package service
 
 import (
 	"errors"
-
 	"ride-hailing/internal/config"
 	"ride-hailing/internal/model"
+	"ride-hailing/internal/repository"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
-type RideRepositoryInterface interface {
-	Create(*model.Ride) error
-	GetByID(string) (*model.Ride, error)
-	Update(*model.Ride) error
-}
-
 type RideService struct {
-	repo RideRepositoryInterface
+	repo *repository.RideRepository
 }
 
-func NewRideService(repo RideRepositoryInterface) *RideService {
+func NewRideService(repo *repository.RideRepository) *RideService {
 	return &RideService{repo: repo}
 }
 
-// Create Ride
+// ---------------- CREATE RIDE ----------------
+
 func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride, error) {
 
-	// Redis required for matching
 	if config.RedisClient == nil {
 		return nil, errors.New("redis not initialized")
 	}
@@ -39,9 +33,9 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 		&redis.GeoSearchQuery{
 			Longitude:  lng,
 			Latitude:   lat,
-			Radius:     5,
+			Radius:     5, // 5 km radius
 			RadiusUnit: "km",
-			Count:      5,
+			Count:      20,
 			Sort:       "ASC",
 		},
 	).Result()
@@ -54,28 +48,28 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 		return nil, errors.New("no drivers available")
 	}
 
-	// Pick first AVAILABLE driver
 	var selectedDriver string
 
+	// pick first AVAILABLE driver
 	for _, d := range drivers {
-		status, err := config.RedisClient.Get(config.Ctx, "driver_status:"+d).Result()
 
-		// default = AVAILABLE
-		if err == redis.Nil {
-			status = "AVAILABLE"
+		status, err := config.RedisClient.Get(config.Ctx, "driver_status:"+d).Result()
+		if err != nil && err != redis.Nil {
+			continue
 		}
 
-		if status == "AVAILABLE" {
+		// default AVAILABLE if not set
+		if status == "" || status == "AVAILABLE" {
 			selectedDriver = d
 			break
 		}
 	}
 
 	if selectedDriver == "" {
-		return nil, errors.New("no available drivers")
+		return nil, errors.New("no available drivers nearby")
 	}
 
-	// Simple fare
+	// simple flat fare
 	fare := 50.0
 
 	ride := &model.Ride{
@@ -93,47 +87,97 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 		return nil, err
 	}
 
+	// attach driver status
+	status, _ := config.RedisClient.Get(config.Ctx, "driver_status:"+selectedDriver).Result()
+	ride.DriverStatus = status
+
 	return ride, nil
 }
 
-// Accept Ride
+// ---------------- ACCEPT RIDE ----------------
+
 func (s *RideService) AcceptRide(rideID, driverID string) error {
+
 	ride, err := s.repo.GetByID(rideID)
 	if err != nil {
 		return err
 	}
 
 	if ride.Status != "MATCHED" {
-		return errors.New("invalid state")
+		return errors.New("ride already accepted or invalid state")
 	}
 
 	if ride.DriverID == nil || *ride.DriverID != driverID {
-		return errors.New("not assigned driver")
+		return errors.New("not assigned to this driver")
 	}
 
+	if config.RedisClient == nil {
+		return errors.New("redis not initialized")
+	}
+
+	// check availability
+	status, _ := config.RedisClient.Get(config.Ctx, "driver_status:"+driverID).Result()
+	if status != "" && status != "AVAILABLE" {
+		return errors.New("driver not available")
+	}
+
+	// update ride
 	ride.Status = "ONGOING"
 
-	// Mark driver busy
-	if config.RedisClient != nil {
-		config.RedisClient.Set(config.Ctx, "driver_status:"+driverID, "ONGOING", 0)
+	err = s.repo.Update(ride)
+	if err != nil {
+		return err
 	}
 
-	return s.repo.Update(ride)
+	// update driver status
+	config.RedisClient.Set(config.Ctx, "driver_status:"+driverID, "ONGOING", 0)
+
+	err = config.RedisClient.Set(
+		config.Ctx,
+		"driver_active_ride:"+driverID,
+		rideID,
+		0,
+	).Err()
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// End Ride
+// ---------------- END RIDE ----------------
+
 func (s *RideService) EndRide(rideID string) (*model.Ride, error) {
+
 	ride, err := s.repo.GetByID(rideID)
 	if err != nil {
 		return nil, err
 	}
 
-	ride.Status = "COMPLETED"
-
-	// Mark driver available again
-	if ride.DriverID != nil && config.RedisClient != nil {
-		config.RedisClient.Set(config.Ctx, "driver_status:"+*ride.DriverID, "AVAILABLE", 0)
+	if ride.Status != "ONGOING" {
+		return nil, errors.New("ride not ongoing")
 	}
 
-	return ride, s.repo.Update(ride)
+	ride.Status = "COMPLETED"
+
+	err = s.repo.Update(ride)
+	if err != nil {
+		return nil, err
+	}
+
+	// free driver
+	if ride.DriverID != nil {
+		driverID := *ride.DriverID
+
+		config.RedisClient.Set(config.Ctx, "driver_status:"+driverID, "AVAILABLE", 0)
+
+		// remove mapping
+		config.RedisClient.Del(
+			config.Ctx,
+			"driver_active_ride:"+driverID,
+		)
+	}
+
+	return ride, nil
 }
