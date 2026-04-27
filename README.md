@@ -54,17 +54,17 @@ docker compose up --build
 ```
 Handler → Service → Repository → PostgreSQL
                          ↓
-                       Redis (Geo)
+                       Redis (Geo + State)
 ```
 
 ### Components:
 
-- **Gin** → HTTP server  
-- **Service Layer** → business logic  
-- **Repository Layer** → DB abstraction  
-- **PostgreSQL** → transactional data (rides)  
-- **Redis** → real-time driver location + matching  
-- **New Relic** → performance monitoring  
+* **Gin** → HTTP server
+* **Service Layer** → business logic
+* **Repository Layer** → DB abstraction
+* **PostgreSQL** → transactional data (rides)
+* **Redis** → real-time driver location, availability & active ride mapping
+* **New Relic** → performance monitoring
 
 ---
 
@@ -94,6 +94,14 @@ POST /v1/drivers/:id/location
 
 ---
 
+### 🔄 Set Driver Availability
+
+```
+POST /v1/drivers/:id/availability
+```
+
+---
+
 ### ✅ Accept Ride
 
 ```
@@ -102,11 +110,13 @@ POST /v1/drivers/:id/accept
 
 ---
 
-### 🏁 End Trip
+### 🏁 End Ride (Driver Based)
 
 ```
-POST /v1/trips/:id/end
+POST /v1/drivers/:id/end
 ```
+
+Ends the active ride assigned to the driver using Redis mapping.
 
 ---
 
@@ -126,10 +136,10 @@ GET /v1/rides/:id
 
 ---
 
-### 👥 Driver Count
+### 👥 Driver List
 
 ```
-GET /v1/drivers/count
+GET /v1/drivers
 ```
 
 ---
@@ -137,8 +147,10 @@ GET /v1/drivers/count
 ## ⚡ Key Features
 
 ### 🚀 Real-Time Driver Matching
-- Redis GEO used for nearest driver lookup  
-- Handles high-frequency location updates  
+
+* Redis GEO used for nearest driver lookup
+* Radius-based matching
+* Filters only AVAILABLE drivers
 
 ---
 
@@ -148,58 +160,85 @@ GET /v1/drivers/count
 MATCHED → ONGOING → COMPLETED
 ```
 
-- Enforced state transitions  
-- Prevents double assignment  
+* Enforced transitions
+* Prevents invalid state changes
+
+---
+
+### 🔗 Driver → Ride Mapping (Important)
+
+* Stored in Redis:
+
+  ```
+  driver_active_ride:<driver_id> → ride_id
+  ```
+* Enables:
+
+  * O(1) lookup of active ride
+  * Driver-based ride actions (end ride)
+* Avoids reliance on frontend state
 
 ---
 
 ### 💰 Pricing
-- Simple fare calculation (mock)  
-- Easily extendable  
+
+* Flat fare (mock implementation)
+* Easily extendable to distance/surge pricing
 
 ---
 
 ### 📊 Monitoring (New Relic)
-- Middleware-based instrumentation  
-- Tracks latency, throughput, and API performance  
+
+* Middleware instrumentation
+* Tracks API latency & performance
 
 ---
 
 ### 🧪 Unit Testing
-- Service layer tested with mock repositories  
-- Covers:
-  - Create ride  
-  - Accept ride  
-  - End ride  
+
+* Service layer tested with mock repositories
+* Covers:
+
+  * Create ride
+  * Accept ride
+  * End ride
 
 ---
 
 ### 🧠 Scalability Design
 
-- Stateless APIs → horizontal scaling  
-- Redis for fast lookups  
-- Minimal DB usage in hot paths  
-- Designed for multi-region extension  
+* Stateless APIs → horizontal scaling
+* Redis for low-latency lookups
+* DB used only for persistence
+* Separation of:
+
+  * Real-time state (Redis)
+  * Persistent data (Postgres)
 
 ---
 
 ### 🔒 Data Consistency
 
-- Ride assignment validation  
-- Status transition enforcement  
-- Prevents race conditions  
+* Driver–ride assignment validation
+* Availability checks before matching
+* Prevents:
+
+  * double assignment
+  * invalid accept/end flows
 
 ---
 
 ## 🎨 Frontend
 
-Simple HTML UI included:
+Simple interactive UI:
 
-- Create ride  
-- Accept ride  
-- End ride  
-- Live updates (polling every 2 seconds)  
-- Driver availability toggle  
+* Add multiple drivers
+* Update driver location
+* Toggle availability
+* Create ride with custom coordinates
+* Accept ride (only assigned driver)
+* End ride (driver-based)
+* Live updates via polling (2s)
 
 Run:
 
@@ -217,47 +256,50 @@ http://localhost:3000
 
 ## 🎬 Demo Flow
 
-1. Add driver location  
-2. Request ride  
-3. System matches driver  
-4. Driver accepts ride  
-5. Trip ends  
-6. Payment processed  
+1. Add multiple drivers (different locations)
+2. Mark one driver unavailable
+3. Create ride near a specific driver
+4. System matches nearest available driver
+5. Driver accepts ride → status becomes ONGOING
+6. End ride via driver → status becomes COMPLETED
+7. Driver becomes AVAILABLE again
 
 ---
 
 ## 🧰 Tech Stack
 
-- Go (Golang)
-- Gin
-- PostgreSQL
-- Redis
-- Docker
-- New Relic
+* Go (Golang)
+* Gin
+* PostgreSQL
+* Redis
+* Docker
+* New Relic
 
 ---
 
-## ✨ Bonus Feature
+## ✨ Bonus Features
 
-### Driver Availability Toggle
-Drivers can mark themselves available/unavailable, and matching respects availability.
+* Driver availability toggle
+* Driver-based ride termination
+* Real-time driver status tracking
 
 ---
 
 ## ⚠️ Notes
 
-- Redis required for matching  
-- PostgreSQL stores ride data  
-- New Relic optional but included  
+* Redis is required for matching
+* PostgreSQL stores ride data
+* New Relic is optional
 
 ---
 
 ## 🎯 Future Improvements
 
-- WebSockets for real-time updates  
-- Surge pricing  
-- Kafka-based event system  
-- Multi-region deployment  
+* WebSockets (remove polling)
+* Dynamic surge pricing
+* Kafka-based async processing
+* Multi-region deployment
+* Driver ETA estimation
 
 ---
 
