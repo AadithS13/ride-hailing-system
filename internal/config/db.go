@@ -30,7 +30,6 @@ func ConnectDB() {
 		if err == nil {
 			log.Println("DB connected ✅")
 
-			// 🔥 ADD THIS
 			DB.AutoMigrate(&model.Ride{})
 
 			return

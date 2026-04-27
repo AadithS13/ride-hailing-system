@@ -14,4 +14,5 @@ type Ride struct {
 	Status    string
 	DriverID  *string
 	CreatedAt time.Time
+	Fare float64
 }

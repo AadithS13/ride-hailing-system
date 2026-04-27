@@ -21,7 +21,9 @@ func NewRideService(repo *repository.RideRepository) *RideService {
 
 func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride, error) {
 
-	// 🔥 Find nearest drivers using Redis GEO
+	fare := 50.0
+
+	// Find nearest drivers using Redis GEO
 	drivers, err := config.RedisClient.GeoSearch(
 		config.Ctx,
 		"drivers",
@@ -45,6 +47,18 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 
 	driverID := drivers[0]
 
+	availabilityKey := "driver_available:" + driverID
+
+	available, err := config.RedisClient.Get(config.Ctx, availabilityKey).Result()
+	if err != nil && err != redis.Nil {
+		return nil, err
+	}
+
+	// default = available if key not set
+	if available == "false" {
+		return nil, errors.New("driver not available")
+	}
+
 	// Create ride
 	ride := &model.Ride{
 		ID:        uuid.New(),
@@ -53,6 +67,7 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 		PickupLng: lng,
 		Status:    "MATCHED",
 		DriverID:  &driverID,
+		Fare:      fare, 
 	}
 
 	err = s.repo.Create(ride)
@@ -67,6 +82,10 @@ func (s *RideService) AcceptRide(rideID, driverID string) error {
 	ride, err := s.repo.GetByID(rideID)
 	if err != nil {
 		return err
+	}
+
+	if ride.Status != "MATCHED" {
+		return errors.New("ride already accepted or invalid state")
 	}
 
 	if ride.DriverID == nil || *ride.DriverID != driverID {
@@ -88,3 +107,4 @@ func (s *RideService) EndRide(rideID string) (*model.Ride, error) {
 
 	return ride, s.repo.Update(ride)
 }
+

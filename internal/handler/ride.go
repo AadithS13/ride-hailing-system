@@ -44,3 +44,17 @@ func EndRide(c *gin.Context) {
 
 	c.JSON(http.StatusOK, ride)
 }
+
+func GetRide(c *gin.Context) {
+	id := c.Param("id")
+
+	repo := repository.NewRideRepository(config.DB)
+
+	ride, err := repo.GetByID(id)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "ride not found"})
+		return
+	}
+
+	c.JSON(200, ride)
+}

@@ -57,3 +57,27 @@ func AcceptRide(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "ride started"})
 }
+
+func SetAvailability(c *gin.Context) {
+	driverID := c.Param("id")
+
+	var input struct {
+		Available bool `json:"available"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	key := "driver_available:" + driverID
+
+	config.RedisClient.Set(config.Ctx, key, input.Available, 0)
+
+	c.JSON(200, gin.H{"message": "availability updated"})
+}
+
+func GetDriverCount(c *gin.Context) {
+	count, _ := config.RedisClient.ZCard(config.Ctx, "drivers").Result()
+	c.JSON(200, gin.H{"count": count})
+}

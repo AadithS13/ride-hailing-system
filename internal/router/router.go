@@ -4,10 +4,14 @@ import (
 	"ride-hailing/internal/handler"
 
 	"github.com/gin-gonic/gin"
+
+	 "github.com/gin-contrib/cors"
 )
 
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
+	r.Use(cors.Default())
+
 
 	// health check
 	r.GET("/health", func(c *gin.Context) {
@@ -19,6 +23,9 @@ func SetupRouter() *gin.Engine {
 	r.POST("/v1/drivers/:id/accept", handler.AcceptRide)
 	r.POST("/v1/trips/:id/end", handler.EndRide)
 	r.POST("/v1/payments", handler.CreatePayment)
+	r.GET("/v1/rides/:id", handler.GetRide)
+	r.POST("/v1/drivers/:id/availability", handler.SetAvailability)
+	r.GET("/v1/drivers/count", handler.GetDriverCount)
 
 	return r
 }

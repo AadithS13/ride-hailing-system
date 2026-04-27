@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ride Hailing Dashboard</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    button { margin: 5px; padding: 10px; }
+    .section { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+
+<h2>🚖 Ride Hailing Dashboard</h2>
+
+<div class="section">
+  <h3>Driver Controls</h3>
+  <button onclick="addDriver()">📍 Add Driver</button>
+  <button onclick="setAvailability(true)">🟢 Available</button>
+  <button onclick="setAvailability(false)">🔴 Unavailable</button>
+</div>
+
+<div class="section">
+  <h3>Ride Controls</h3>
+  <button onclick="createRide()">🚕 Request Ride</button>
+  <button onclick="acceptRide()">✅ Accept Ride</button>
+  <button onclick="endRide()">🏁 End Ride</button>
+  <button onclick="fullFlow()">⚡ Auto Flow</button>
+</div>
+
+<div class="section">
+  <h3>Live Status</h3>
+  <p id="status">Status: -</p>
+  <p id="drivers">Drivers Available: -</p>
+  <p id="price">Estimated Price: -</p>
+</div>
+
+<pre id="output"></pre>
+
+<script>
+let rideId = null;
+
+// 🔁 Polling (real-time feel)
+setInterval(async () => {
+  if (!rideId) return;
+
+  try {
+    const res = await fetch(`http://localhost:8080/v1/rides/${rideId}`);
+    const data = await res.json();
+    show(data);
+  } catch (err) {
+    console.log("Polling error");
+  }
+
+  getDriverCount();
+}, 2000);
+
+// ---------------- DRIVER ----------------
+
+async function addDriver() {
+  const res = await fetch('http://localhost:8080/v1/drivers/1/location', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({lat: 12.9716, lng: 77.5946})
+  });
+  show(await res.json());
+}
+
+async function setAvailability(flag) {
+  await fetch('http://localhost:8080/v1/drivers/1/availability', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({available: flag})
+  });
+}
+
+// ---------------- RIDE ----------------
+
+async function createRide() {
+  const res = await fetch('http://localhost:8080/v1/rides', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      rider_id: "r1",
+      pickup_lat: 12.9716,
+      pickup_lng: 77.5946
+    })
+  });
+
+  const data = await res.json();
+  rideId = data.ID;
+
+  show(data);
+}
+
+async function acceptRide() {
+  if (!rideId) return alert("Create ride first");
+
+  const res = await fetch('http://localhost:8080/v1/drivers/1/accept', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ride_id: rideId})
+  });
+
+  show(await res.json());
+}
+
+async function endRide() {
+  if (!rideId) return alert("Create ride first");
+
+  const res = await fetch(`http://localhost:8080/v1/trips/${rideId}/end`, {
+    method: 'POST'
+  });
+
+  show(await res.json());
+}
+
+// ---------------- EXTRA ----------------
+
+async function getDriverCount() {
+  try {
+    const res = await fetch("http://localhost:8080/v1/drivers/count");
+    const data = await res.json();
+    document.getElementById("drivers").innerText =
+      "Drivers Available: " + data.count;
+  } catch {}
+}
+
+// 🔥 Auto demo flow
+async function fullFlow() {
+  await addDriver();
+  await setAvailability(true);
+  await createRide();
+
+  setTimeout(async () => {
+    await acceptRide();
+  }, 2000);
+
+  setTimeout(async () => {
+    await endRide();
+  }, 4000);
+}
+
+// ---------------- UI ----------------
+
+function show(data) {
+  document.getElementById("output").innerText =
+    JSON.stringify(data, null, 2);
+
+  if (data.Status) {
+    document.getElementById("status").innerText =
+      "Status: " + data.Status;
+  }
+
+  if (data.Fare) {
+    document.getElementById("price").innerText =
+      "Estimated Price: ₹" + data.Fare;
+  }
+}
+</script>
+
+</body>
+</html>
