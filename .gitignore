@@ -1,0 +1,5 @@
+.env
+main
+*.log
+.DS_Store
+postgres_data/
