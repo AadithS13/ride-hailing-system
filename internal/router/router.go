@@ -38,7 +38,8 @@ func SetupRouter() *gin.Engine {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	r.POST("/v1/drivers/:id/location", handler.UpdateLocation)
+	r.POST("/v1/drivers", handler.CreateDriver)
+	r.POST("/v1/drivers/:id/location", handler.UpdateDriverLocation)
 	r.POST("/v1/drivers/:id/availability", handler.SetAvailability)
 	r.GET("/v1/drivers/stats", handler.GetDriverStats)
 	r.GET("/v1/drivers", handler.GetDriverList)

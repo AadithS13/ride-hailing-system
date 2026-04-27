@@ -8,7 +8,49 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func UpdateLocation(c *gin.Context) {
+func CreateDriver(c *gin.Context) {
+	var input struct {
+		DriverID string  `json:"driver_id"`
+		Lat      float64 `json:"lat"`
+		Lng      float64 `json:"lng"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Add to Redis GEO
+	err := config.RedisClient.GeoAdd(
+		config.Ctx,
+		"drivers",
+		&redis.GeoLocation{
+			Name:      input.DriverID,
+			Latitude:  input.Lat,
+			Longitude: input.Lng,
+		},
+	).Err()
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to add driver"})
+		return
+	}
+
+	// Set default status
+	config.RedisClient.Set(
+		config.Ctx,
+		"driver_status:"+input.DriverID,
+		"AVAILABLE",
+		0,
+	)
+
+	c.JSON(200, gin.H{
+		"message":   "driver created",
+		"driver_id": input.DriverID,
+	})
+}
+
+func UpdateDriverLocation(c *gin.Context) {
 	driverID := c.Param("id")
 
 	var input struct {
@@ -21,27 +63,36 @@ func UpdateLocation(c *gin.Context) {
 		return
 	}
 
-	// Add/update location
-	config.RedisClient.GeoAdd(config.Ctx, "drivers", &redis.GeoLocation{
-		Name:      driverID,
-		Longitude: input.Lng,
-		Latitude:  input.Lat,
-	})
+	// OPTIONAL: check if driver exists
+	exists, _ := config.RedisClient.Get(
+		config.Ctx,
+		"driver_status:"+driverID,
+	).Result()
 
-	// Initialize status if not present
-	key := "driver_status:" + driverID
-	exists, _ := config.RedisClient.Exists(config.Ctx, key).Result()
-	if exists == 0 {
-		config.RedisClient.Set(config.Ctx, key, "AVAILABLE", 0)
+	if exists == "" {
+		c.JSON(400, gin.H{"error": "driver does not exist"})
+		return
+	}
+
+	// Update location
+	err := config.RedisClient.GeoAdd(
+		config.Ctx,
+		"drivers",
+		&redis.GeoLocation{
+			Name:      driverID,
+			Latitude:  input.Lat,
+			Longitude: input.Lng,
+		},
+	).Err()
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to update location"})
+		return
 	}
 
 	c.JSON(200, gin.H{
-		"message":   "driver added/updated successfully",
+		"message":   "location updated",
 		"driver_id": driverID,
-		"location": gin.H{
-			"lat": input.Lat,
-			"lng": input.Lng,
-		},
 	})
 }
 

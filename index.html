@@ -73,17 +73,17 @@
   <div class="card">
     <h3>Driver</h3>
 
+    <input id="driverIdInput" placeholder="Driver ID (e.g. 1)" />
     <input id="driverLat" value="12.97" />
     <input id="driverLng" value="77.59" />
 
-    <button class="secondary" onclick="addDriver()">Add Driver</button>
+    <button class="secondary" onclick="createDriver()">Create Driver</button>
 
     <select id="driverSelect"></select>
 
-    <button class="secondary" onclick="updateDriver()">Update Driver Location</button>
+    <button onclick="updateDriver()">Update Location</button>
     <button class="primary" onclick="setAvailability(true)">Set Available</button>
     <button class="danger" onclick="setAvailability(false)">Set Unavailable</button>
-    <button class="danger" onclick="clearDrivers()">Clear All Drivers</button>
   </div>
 
   <!-- RIDE -->
@@ -119,7 +119,6 @@
 <script>
 
 let rideId = null;
-let driverCounter = 1;
 let assignedDriverId = null;
 
 // polling
@@ -133,27 +132,38 @@ setInterval(async () => {
   getDrivers();
 }, 2000);
 
-// ADD DRIVER (always new)
-async function addDriver() {
-  const driverID = driverCounter++;
-
+// CREATE DRIVER
+async function createDriver() {
+  const driverID = document.getElementById("driverIdInput").value;
   const lat = parseFloat(document.getElementById("driverLat").value);
   const lng = parseFloat(document.getElementById("driverLng").value);
 
-  const res = await fetch(`http://localhost:8080/v1/drivers/${driverID}/location`, {
+  if (!driverID) {
+    alert("Enter driver ID");
+    return;
+  }
+
+  const res = await fetch('http://localhost:8080/v1/drivers', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({lat, lng})
+    body: JSON.stringify({
+      driver_id: driverID,
+      lat,
+      lng
+    })
   });
 
   const data = await res.json();
 
-  document.getElementById("driverSelect").value = driverID;
+  // auto select created driver
+  setTimeout(() => {
+    document.getElementById("driverSelect").value = driverID;
+  }, 500);
 
   show(data);
 }
 
-// UPDATE DRIVER
+// UPDATE DRIVER LOCATION
 async function updateDriver() {
   const driverID = document.getElementById("driverSelect").value;
 
@@ -189,20 +199,6 @@ async function setAvailability(flag) {
   show(await res.json());
 }
 
-// CLEAR DRIVERS
-async function clearDrivers() {
-  const res = await fetch("http://localhost:8080/v1/drivers", { method: "DELETE" });
-
-  rideId = null;
-  assignedDriverId = null;
-  driverCounter = 1;
-
-  document.getElementById("driverList").innerHTML = "";
-  document.getElementById("driverSelect").innerHTML = "";
-  document.getElementById("rideStatus").innerText = "Ride: -";
-  document.getElementById("price").innerText = "Price: -";
-}
-
 // CREATE RIDE
 async function createRide() {
   const lat = parseFloat(document.getElementById("riderLat").value);
@@ -223,7 +219,9 @@ async function createRide() {
   rideId = data.ID;
   assignedDriverId = data.DriverID;
 
-  document.getElementById("driverSelect").value = assignedDriverId;
+  setTimeout(() => {
+    document.getElementById("driverSelect").value = assignedDriverId;
+  }, 500);
 
   show(data);
 }
@@ -249,7 +247,7 @@ async function acceptRide() {
   show(await res.json());
 }
 
-// END RIDE BY DRIVER
+// END RIDE (BY DRIVER)
 async function endRide() {
   const driverID = document.getElementById("driverSelect").value;
 
@@ -305,7 +303,8 @@ async function getDrivers() {
 
 // UI UPDATE
 function show(data) {
-  document.getElementById("output").innerText = JSON.stringify(data, null, 2);
+  document.getElementById("output").innerText =
+    JSON.stringify(data, null, 2);
 
   if (data.Status && data.DriverStatus) {
     document.getElementById("rideStatus").innerText =
@@ -314,6 +313,10 @@ function show(data) {
 
   if (data.Fare) {
     document.getElementById("price").innerText = "Price: ₹" + data.Fare;
+  }
+
+  if (data.error) {
+    document.getElementById("rideStatus").innerText = "Error: " + data.error;
   }
 }
 

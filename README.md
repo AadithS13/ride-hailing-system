@@ -217,6 +217,14 @@ MATCHED → ONGOING → COMPLETED
 
 ---
 
+
+### ⚡ API Latency Optimizations
+- Redis used for real-time driver matching (avoids DB hits in hot path)
+- Added caching for GET /v1/rides/:id to reduce repeated polling load
+- Implemented cache invalidation on ride state updates (accept/end)
+- Database indexing on frequently queried fields (driver_id, status)
+- State validation ensures consistency under concurrent requests
+
 ### 🔒 Data Consistency
 
 * Driver–ride assignment validation
