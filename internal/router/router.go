@@ -39,13 +39,18 @@ func SetupRouter() *gin.Engine {
 	})
 
 	r.POST("/v1/drivers/:id/location", handler.UpdateLocation)
-	r.POST("/v1/rides", handler.CreateRide)
-	r.POST("/v1/drivers/:id/accept", handler.AcceptRide)
-	r.POST("/v1/trips/:id/end", handler.EndRide)
-	r.POST("/v1/payments", handler.CreatePayment)
-	r.GET("/v1/rides/:id", handler.GetRide)
 	r.POST("/v1/drivers/:id/availability", handler.SetAvailability)
-	r.GET("/v1/drivers/count", handler.GetDriverCount)
+	r.GET("/v1/drivers/stats", handler.GetDriverStats)
+
+	// ride routes
+	r.POST("/v1/rides", handler.CreateRide)
+	r.GET("/v1/rides/:id", handler.GetRide)
+
+	// driver accepts ride
+	r.POST("/v1/drivers/:id/accept", handler.AcceptRideHandler)
+
+	// end trip
+	r.POST("/v1/trips/:id/end", handler.EndRideHandler)	
 
 	return r
 }

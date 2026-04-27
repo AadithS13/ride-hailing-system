@@ -30,7 +30,7 @@ func CreateRide(c *gin.Context) {
 	c.JSON(http.StatusOK, ride)
 }
 
-func EndRide(c *gin.Context) {
+func EndRideHandler(c *gin.Context) {
 	rideID := c.Param("id")
 
 	repo := repository.NewRideRepository(config.DB)
@@ -38,11 +38,11 @@ func EndRide(c *gin.Context) {
 
 	ride, err := svc.EndRide(rideID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, ride)
+	c.JSON(200, ride)
 }
 
 func GetRide(c *gin.Context) {
@@ -57,4 +57,28 @@ func GetRide(c *gin.Context) {
 	}
 
 	c.JSON(200, ride)
+}
+
+func AcceptRideHandler(c *gin.Context) {
+	driverID := c.Param("id")
+
+	var input struct {
+		RideID string `json:"ride_id"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	repo := repository.NewRideRepository(config.DB)
+	svc := service.NewRideService(repo)
+
+	err := svc.AcceptRide(input.RideID, driverID)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "ride started"})
 }
