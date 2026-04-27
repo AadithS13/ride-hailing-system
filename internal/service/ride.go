@@ -2,26 +2,33 @@ package service
 
 import (
 	"errors"
+
 	"ride-hailing/internal/config"
 	"ride-hailing/internal/model"
-	"ride-hailing/internal/repository"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-
 )
 
-type RideService struct {
-	repo *repository.RideRepository
+type RideRepositoryInterface interface {
+	Create(*model.Ride) error
+	GetByID(string) (*model.Ride, error)
+	Update(*model.Ride) error
 }
 
-func NewRideService(repo *repository.RideRepository) *RideService {
+type RideService struct {
+	repo RideRepositoryInterface
+}
+
+func NewRideService(repo RideRepositoryInterface) *RideService {
 	return &RideService{repo: repo}
 }
 
 func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride, error) {
 
-	fare := 50.0
+	if config.RedisClient == nil {
+		return nil, errors.New("redis not initialized")
+	}
 
 	// Find nearest drivers using Redis GEO
 	drivers, err := config.RedisClient.GeoSearch(
@@ -30,7 +37,7 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 		&redis.GeoSearchQuery{
 			Longitude:  lng,
 			Latitude:   lat,
-			Radius:     5, // km
+			Radius:     5,
 			RadiusUnit: "km",
 			Count:      1,
 			Sort:       "ASC",
@@ -47,6 +54,7 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 
 	driverID := drivers[0]
 
+	// Check availability
 	availabilityKey := "driver_available:" + driverID
 
 	available, err := config.RedisClient.Get(config.Ctx, availabilityKey).Result()
@@ -54,12 +62,13 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 		return nil, err
 	}
 
-	// default = available if key not set
 	if available == "false" {
 		return nil, errors.New("driver not available")
 	}
 
-	// Create ride
+	// Simple fare
+	fare := 50.0
+
 	ride := &model.Ride{
 		ID:        uuid.New(),
 		RiderID:   riderID,
@@ -67,7 +76,7 @@ func (s *RideService) CreateRide(riderID string, lat, lng float64) (*model.Ride,
 		PickupLng: lng,
 		Status:    "MATCHED",
 		DriverID:  &driverID,
-		Fare:      fare, 
+		Fare:      fare,
 	}
 
 	err = s.repo.Create(ride)
@@ -107,4 +116,3 @@ func (s *RideService) EndRide(rideID string) (*model.Ride, error) {
 
 	return ride, s.repo.Update(ride)
 }
-
